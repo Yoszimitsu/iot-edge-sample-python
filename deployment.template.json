@@ -46,6 +46,21 @@
               "image": "${MODULES.SampleModule}",
               "createOptions": ""
             }
+          },
+          "moxa_demokit_streamAnalytics_DanielM": {
+            "settings": {
+                "image": "mcr.microsoft.com/azure-stream-analytics/azureiotedge:1.0.10",
+                "createOptions": ""
+            },
+            "type": "docker",
+            "version": "1.0.0.0",
+            "env": {
+                "PlanId": {
+                    "value": "stream-analytics-on-iot-edge"
+                }
+            },
+            "status": "running",
+            "restartPolicy": "always"
           }
         }
       }
@@ -54,7 +69,10 @@
       "properties.desired": {
         "schemaVersion": "1.0",
         "routes": {
-          "SampleModuleToIoTHub": "FROM /messages/modules/SampleModule/outputs/* INTO $upstream"
+          "SampleModuleToIoTHub": "FROM /messages/modules/SampleModule/outputs/* INTO $upstream",
+          "alertsToCloud": "FROM /messages/modules/moxa_demokit_streamAnalytics_DanielM/* INTO $upstream",
+          "telemetryToAsa": "FROM /messages/modules/SampleModule/outputs/* INTO BrokeredEndpoint(\\\"/modules/moxa_demokit_streamAnalytics_DanielM/inputs/temperature\\\")",
+          "alertsToReset": "FROM /messages/modules/moxa_demokit_streamAnalytics_DanielM/* INTO BrokeredEndpoint(\"/modules/SampleModule/inputs/control\")"
         },
         "storeAndForwardConfiguration": {
           "timeToLiveSecs": 7200
