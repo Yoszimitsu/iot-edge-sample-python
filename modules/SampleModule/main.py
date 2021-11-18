@@ -10,16 +10,15 @@ from azure.iot.device.aio import IoTHubModuleClient
 from pyModbusTCP.client import ModbusClient
 
 THRESHOLD = 70.0
-MODBUSC_CLIENT_ADDRESS = "192.168.4.254"
+MODBUS_TCP_CLIENT_ADDRESS = "192.168.4.254"
 
-async def check_level(module_client):
+
+async def check_level(moduleClient):
     alert = False
     message = ""
     # Customize this coroutine to do whatever tasks the module initiates
     # TCP auto connect on first modbus request
-    iologik = ModbusClient(host=MODBUSC_CLIENT_ADDRESS, port=502,
-                           unit_id=1, auto_open=True)
-    iologik.open()
+    iologik = open_modbusTCP_client_connection(MODBUS_TCP_CLIENT_ADDRESS)
 
     while True:
         # request will get a list --> cast first element to int or float
@@ -43,7 +42,7 @@ async def check_level(module_client):
             msg = create_message(str("Level: %1f, time: %s" % (level, alert_time)), "ALERT")
             # sending alert message to IoTHub
             try:
-                await module_client.send_message_to_output(msg, "output1")
+                await moduleClient.send_message_to_output(msg, "output1")
                 print("Alert send to IotHub!")
             except Exception as send_message_to_output_error:
                 print("Unexpected error %s from IoTHub" % send_message_to_output_error)
@@ -52,7 +51,8 @@ async def check_level(module_client):
             alert_time = datetime.now().strftime("%H:%M:%S")
             iologik.write_single_coil(0, 0)
             print("ALERT: %s \nLevel -> %1f < %1f, \ntime = %s" % (alert, level, THRESHOLD, alert_time))
-    iologik.close()
+    
+    close_modbusTCP_client_connection(iologik)
 
 def create_message(input, type):
     msg = Message(input)
@@ -67,6 +67,17 @@ def point_slope(INPUT, sourceMin, sourceMax, targetMin, targetMax):
     OUTPUT = ((INPUT-sourceMin) * (targetMax-targetMin) /
               (sourceMax-sourceMin)) + targetMin
     return OUTPUT
+
+
+def open_modbusTCP_client_connection(ipAddress):
+    modbusClient = ModbusClient(host=ipAddress, port=502,
+                           unit_id=1, auto_open=True)
+    modbusClient.open()
+    return modbusClient
+
+def close_modbusTCP_client_connection(modbusClient):
+    modbusClient.close()
+
 
 async def main():
     module_client = IoTHubModuleClient.create_from_edge_environment()
