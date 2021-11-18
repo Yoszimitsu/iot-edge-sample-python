@@ -1,17 +1,10 @@
-FROM resin/raspberrypi3-python:2.7
+FROM arm32v7/python:3.7-slim-buster
 
 WORKDIR /app
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends libboost-python1.55.0 && \
-    rm -rf /var/lib/apt/lists/* 
 
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
 COPY . .
 
-RUN useradd -ms /bin/bash moduleuser
-USER moduleuser
-
-ENTRYPOINT [ "python", "-u", "./main.py" ]
+CMD [ "python3", "-u", "./main.py" ]

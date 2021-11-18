@@ -1,1 +1,2 @@
-azure-iothub-device-client==1.4.0
+azure-iot-device~=2.9.0
+pyModbusTCP==0.1.10

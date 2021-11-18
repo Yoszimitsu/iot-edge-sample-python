@@ -1,94 +1,85 @@
 # Copyright (c) Microsoft. All rights reserved.
 # Licensed under the MIT license. See LICENSE file in the project root for
 # full license information.
-
-import random
-import time
 import sys
-import iothub_client
-# pylint: disable=E0611
-from iothub_client import IoTHubModuleClient, IoTHubClientError, IoTHubTransportProvider
-from iothub_client import IoTHubMessage, IoTHubMessageDispositionResult, IoTHubError
+import asyncio
+import uuid
+from datetime import datetime
+from azure.iot.device import Message
+from azure.iot.device.aio import IoTHubModuleClient
+from pyModbusTCP.client import ModbusClient
 
-# messageTimeout - the maximum time in milliseconds until a message times out.
-# The timeout period starts at IoTHubModuleClient.send_event_async.
-# By default, messages do not expire.
-MESSAGE_TIMEOUT = 10000
+THRESHOLD = 70.0
+MODBUSC_CLIENT_ADDRESS = "192.168.4.254"
 
-# global counters
-RECEIVE_CALLBACKS = 0
-SEND_CALLBACKS = 0
+async def check_level(module_client):
+    alert = False
+    message = ""
+    # Customize this coroutine to do whatever tasks the module initiates
+    # TCP auto connect on first modbus request
+    iologik = ModbusClient(host=MODBUSC_CLIENT_ADDRESS, port=502,
+                           unit_id=1, auto_open=True)
+    iologik.open()
 
-# Choose HTTP, AMQP or MQTT as transport protocol.  Currently only MQTT is supported.
-PROTOCOL = IoTHubTransportProvider.MQTT
+    while True:
+        # request will get a list --> cast first element to int or float
+        level = iologik.read_input_registers(513, 1)
+        # check if read successful
+        if not level:
+            level = [-1]
+            print("Level read error")
+        #create float
+        level = float(level[0])
 
-# Callback received when the message that we're forwarding is processed.
-def send_confirmation_callback(message, result, user_context):
-    global SEND_CALLBACKS
-    print ( "Confirmation[%d] received for message with result = %s" % (user_context, result) )
-    map_properties = message.properties()
-    key_value_pair = map_properties.get_internals()
-    print ( "    Properties: %s" % key_value_pair )
-    SEND_CALLBACKS += 1
-    print ( "    Total calls confirmed: %d" % SEND_CALLBACKS )
+        # Calculate Point Slope as in ThingsPro Gateway
+        level = point_slope(level, 0, 65535, 0, 100)
 
+        # LED alert logic
+        if level >= THRESHOLD and alert == False:
+            alert = True
+            iologik.write_single_coil(0, 1)
+            alert_time = datetime.now().strftime("%H:%M:%S")
+            print("ALERT: %s \nLevel -> %1f >= %1f, \ntime: %s" % (alert, level, THRESHOLD, alert_time))
+            msg = create_message(str("Level: %1f, time: %s" % (level, alert_time)), "ALERT")
+            # sending alert message to IoTHub
+            try:
+                await module_client.send_message_to_output(msg, "output1")
+                print("Alert send to IotHub!")
+            except Exception as send_message_to_output_error:
+                print("Unexpected error %s from IoTHub" % send_message_to_output_error)
+        elif level < THRESHOLD and alert == True:
+            alert = False
+            alert_time = datetime.now().strftime("%H:%M:%S")
+            iologik.write_single_coil(0, 0)
+            print("ALERT: %s \nLevel -> %1f < %1f, \ntime = %s" % (alert, level, THRESHOLD, alert_time))
+    iologik.close()
 
-# receive_message_callback is invoked when an incoming message arrives on the specified 
-# input queue (in the case of this sample, "input1").  Because this is a filter module, 
-# we will forward this message onto the "output1" queue.
-def receive_message_callback(message, hubManager):
-    global RECEIVE_CALLBACKS
-    message_buffer = message.get_bytearray()
-    size = len(message_buffer)
-    print ( "    Data: <<<%s>>> & Size=%d" % (message_buffer[:size].decode('utf-8'), size) )
-    map_properties = message.properties()
-    key_value_pair = map_properties.get_internals()
-    print ( "    Properties: %s" % key_value_pair )
-    RECEIVE_CALLBACKS += 1
-    print ( "    Total calls received: %d" % RECEIVE_CALLBACKS )
-    hubManager.forward_event_to_output("output1", message, 0)
-    return IoTHubMessageDispositionResult.ACCEPTED
+def create_message(input, type):
+    msg = Message(input)
+    msg.message_id = uuid.uuid4()
+    msg.correlation_id = "correlation-1234"
+    msg.custom_properties["MsgType"] = type
+    return msg
 
+def point_slope(INPUT, sourceMin, sourceMax, targetMin, targetMax):
+    # Calculate Point Slope as in ThingsPro Gateway
+    # Point-slope: OUTPUT = ((INPUT-sourceMin) * (targetMax-targetMin) / (sourceMax-sourceMin)) + targetMin
+    OUTPUT = ((INPUT-sourceMin) * (targetMax-targetMin) /
+              (sourceMax-sourceMin)) + targetMin
+    return OUTPUT
 
-class HubManager(object):
-
-    def __init__(
-            self,
-            protocol=IoTHubTransportProvider.MQTT):
-        self.client_protocol = protocol
-        self.client = IoTHubModuleClient()
-        self.client.create_from_environment(protocol)
-
-        # set the time until a message times out
-        self.client.set_option("messageTimeout", MESSAGE_TIMEOUT)
-        
-        # sets the callback when a message arrives on "input1" queue.  Messages sent to 
-        # other inputs or to the default will be silently discarded.
-        self.client.set_message_callback("input1", receive_message_callback, self)
-
-    # Forwards the message received onto the next stage in the process.
-    def forward_event_to_output(self, outputQueueName, event, send_context):
-        self.client.send_event_async(
-            outputQueueName, event, send_confirmation_callback, send_context)
-
-def main(protocol):
+async def main():
+    module_client = IoTHubModuleClient.create_from_edge_environment()
+    await module_client.connect()
+    print("\nPython %s\n" % sys.version)
+    print("IoT Hub Client for Python")
     try:
-        print ( "\nPython %s\n" % sys.version )
-        print ( "IoT Hub Client for Python" )
-
-        hub_manager = HubManager(protocol)
-
-        print ( "Starting the IoT Hub Python sample using protocol %s..." % hub_manager.client_protocol )
-        print ( "The sample is now waiting for messages and will indefinitely.  Press Ctrl-C to exit. ")
-
-        while True:
-            time.sleep(1)
-
-    except IoTHubError as iothub_error:
-        print ( "Unexpected error %s from IoTHub" % iothub_error )
+        await check_level(module_client)
+        print("The sample is now checking level and will indefinitely.  Press Ctrl-C to exit. ")
+    except Exception as iothub_error:
+        print("Unexpected error %s from IoTHub" % iothub_error)
+        await module_client.shutdown()
         return
-    except KeyboardInterrupt:
-        print ( "IoTHubModuleClient sample stopped" )
 
 if __name__ == '__main__':
-    main(PROTOCOL)
+    asyncio.run(main())
