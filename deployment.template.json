@@ -67,12 +67,28 @@
     },
     "$edgeHub": {
       "properties.desired": {
-        "schemaVersion": "1.0",
+        "schemaVersion": "1.1",
         "routes": {
-          "SampleModuleToIoTHub": "FROM /messages/modules/SampleModule/outputs/* INTO $upstream",
-          "alertsToCloud": "FROM /messages/modules/moxa_demokit_streamAnalytics_DanielM/* INTO $upstream",
-          "telemetryToAsa": "FROM /messages/modules/SampleModule/outputs/* INTO BrokeredEndpoint(\\\"/modules/moxa_demokit_streamAnalytics_DanielM/inputs/temperature\\\")",
-          "alertsToReset": "FROM /messages/modules/moxa_demokit_streamAnalytics_DanielM/* INTO BrokeredEndpoint(\"/modules/SampleModule/inputs/control\")"
+          "knob2ToCloud": {
+            "route": "FROM /messages/modules/SampleModule/outputs/knob2 INTO $upstream",
+            "priority": 0
+          },
+          "resetToMachine": {
+            "route": "FROM /messages/modules/moxa_demokit_streamAnalytics_DanielM/* INTO BrokeredEndpoint(\"/modules/SampleModule/inputs/control\")",
+            "priority": 0
+          },
+          "temperatureToCloud": {
+            "route": "FROM /messages/modules/SampleModule/outputs/temperature INTO $upstream)",
+            "priority": 1
+          },
+          "temperatureToAsa": {
+            "route": "FROM /messages/modules/SampleModule/outputs/temperature INTO BrokeredEndpoint(\"/modules/moxa_demokit_streamAnalytics_DanielM/inputs/temperature\")",
+            "priority": 1
+          },
+          "alertsToCloud": {
+              "route": "FROM /messages/modules/moxa_demokit_streamAnalytics_DanielM/* INTO $upstream)",
+              "priority": 1
+          }
         },
         "storeAndForwardConfiguration": {
           "timeToLiveSecs": 7200
