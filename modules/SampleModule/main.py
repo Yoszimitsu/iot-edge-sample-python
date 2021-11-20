@@ -12,8 +12,88 @@ from pyModbusTCP.client import ModbusClient
 THRESHOLD = 70.0
 MODBUS_TCP_CLIENT_ADDRESS = "192.168.4.254"
 
+def create_module_clinet():
 
-async def check_level(moduleClient):
+    moduleClient = IoTHubModuleClient.create_from_edge_environment()
+
+    # Define behavior for receiving an input message on input1 and input2
+    # NOTE: this could be a coroutine or a function
+    def message_handler(message):
+        if message.input_name == "control":
+            print("Message received on \"Control\"")
+            print("the data in the message received was ")
+            print(message.data)
+            print("custom properties are")
+            print(message.custom_properties)
+        else:
+            print("message received on unknown input")
+
+    # # Define behavior for receiving a twin desired properties patch
+    # # NOTE: this could be a coroutine or function
+    def twin_patch_handler(patch):
+        print("the data in the desired properties patch was: {}".format(patch))
+
+    # # Define behavior for receiving methods
+    async def method_handler(method_request):
+        if method_request.name == "get_data":
+            print("Received request for data")
+            method_response = MethodResponse.create_from_method_request(
+                method_request, 200, "some data"
+            )
+            await moduleClient.send_method_response(method_response)
+        else:
+            print("Unknown method request received: {}".format(method_request.name))
+            method_response = MethodResponse.create_from_method_request(
+                method_request, 400, None)
+            await moduleClient.send_method_response(method_response)
+
+    # set the received data handlers on the client
+    moduleClient.on_message_received = message_handler
+    moduleClient.on_twin_desired_properties_patch_received = twin_patch_handler
+    moduleClient.on_method_request_received = method_handler
+
+    return moduleClient
+
+
+async def temperature_handler(moduleClient):
+    await moduleClient.connect()
+    # TCP auto connect on first modbus request
+    iologik = open_modbusTCP_client_connection(MODBUS_TCP_CLIENT_ADDRESS)
+
+    while True:
+        # request will get a list --> cast first element to int or float
+        temperature = iologik.read_input_registers(512, 1)
+        if not temperature:
+            temperature = [-1]
+            print("Temperature read error")
+
+        #cast to float
+        temperature = float(temperature[0])
+        #scale read data
+        temperature = point_slope(temperature, 0, 65535, 0, 100)
+        data = {
+            "machine": {
+                "temperature": temperature
+            },
+            "timeCreated": "%s" % datetime.now().isoformat()
+        }
+        msg = create_message(json.dumps(data), "info")
+        print(msg.data)
+
+        # sending temperature data to moxa_demokit_streamAnalytics_DanielM module
+        try:
+            await moduleClient.send_message_to_output(msg, "temperature")
+        except Exception as send_message_to_output_error:
+            print("Unexpected error %s from IoTHub" %
+                  send_message_to_output_error)
+
+        # interupt coroutine for 5 sec.
+        await asyncio.sleep(5)
+    
+    close_modbusTCP_client_connection(iologik)
+
+async def knob2_handler(moduleClient):
+    await moduleClient.connect()
     alert = False
     message = ""
     # Customize this coroutine to do whatever tasks the module initiates
