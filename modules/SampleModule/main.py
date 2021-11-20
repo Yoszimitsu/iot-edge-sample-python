@@ -4,8 +4,9 @@
 import sys
 import asyncio
 import uuid
+import json
 from datetime import datetime
-from azure.iot.device import Message
+from azure.iot.device import Message, MethodResponse
 from azure.iot.device.aio import IoTHubModuleClient
 from pyModbusTCP.client import ModbusClient
 
@@ -95,54 +96,67 @@ async def temperature_handler(moduleClient):
 async def knob2_handler(moduleClient):
     await moduleClient.connect()
     alert = False
-    message = ""
-    # Customize this coroutine to do whatever tasks the module initiates
+
     # TCP auto connect on first modbus request
     iologik = open_modbusTCP_client_connection(MODBUS_TCP_CLIENT_ADDRESS)
 
     while True:
         # request will get a list --> cast first element to int or float
-        level = iologik.read_input_registers(513, 1)
+        knob2 = iologik.read_input_registers(513, 1)
         # check if read successful
-        if not level:
-            level = [-1]
+        if not knob2:
+            knob2 = [-1]
             print("Level read error")
-        #create float
-        level = float(level[0])
+        # cast to float
+        knob2 = float(knob2[0])
 
         # Calculate Point Slope as in ThingsPro Gateway
-        level = point_slope(level, 0, 65535, 0, 100)
+        knob2 = point_slope(knob2, 0, 65535, 0, 100)
+        probe_time = datetime.now().isoformat()
 
-        # LED alert logic
-        if level >= THRESHOLD and alert == False:
+        # alert logic
+        if knob2 >= THRESHOLD and alert == False:
             alert = True
             iologik.write_single_coil(0, 1)
-            alert_time = datetime.now().strftime("%H:%M:%S")
-            print("ALERT: %s \nLevel -> %1f >= %1f, \ntime: %s" % (alert, level, THRESHOLD, alert_time))
-            msg = create_message(str("Level: %1f, time: %s" % (level, alert_time)), "ALERT")
+            data = {
+                "machine": {
+                    "knob2": knob2
+            },
+            "timeCreated": "%s" % probe_time
+            }
+            msg = create_message(json.dumps(data), "alert")
+
+            print("==============================")
+            print(msg.data)
+
             # sending alert message to IoTHub
             try:
-                await moduleClient.send_message_to_output(msg, "output1")
+                await moduleClient.send_message_to_output(msg, "knob2")
                 print("Alert send to IotHub!")
+                print("==============================")
             except Exception as send_message_to_output_error:
-                print("Unexpected error %s from IoTHub" % send_message_to_output_error)
-        elif level < THRESHOLD and alert == True:
+                print("Unexpected error %s from check_level method" %
+                      send_message_to_output_error)
+        elif knob2 < THRESHOLD and alert == True:
             alert = False
-            alert_time = datetime.now().strftime("%H:%M:%S")
             iologik.write_single_coil(0, 0)
-            print("ALERT: %s \nLevel -> %1f < %1f, \ntime = %s" % (alert, level, THRESHOLD, alert_time))
-    
+
+        # interupt coroutine
+        await asyncio.sleep(0)
+
     close_modbusTCP_client_connection(iologik)
+
 
 def create_message(input, type):
     msg = Message(input)
     msg.message_id = uuid.uuid4()
-    msg.correlation_id = "correlation-1234"
+    msg.content_type = "application/json"
+    msg.content_encoding = "utf-8"
     msg.custom_properties["MsgType"] = type
     return msg
 
+
 def point_slope(INPUT, sourceMin, sourceMax, targetMin, targetMax):
-    # Calculate Point Slope as in ThingsPro Gateway
     # Point-slope: OUTPUT = ((INPUT-sourceMin) * (targetMax-targetMin) / (sourceMax-sourceMin)) + targetMin
     OUTPUT = ((INPUT-sourceMin) * (targetMax-targetMin) /
               (sourceMax-sourceMin)) + targetMin
@@ -150,27 +164,49 @@ def point_slope(INPUT, sourceMin, sourceMax, targetMin, targetMax):
 
 
 def open_modbusTCP_client_connection(ipAddress):
-    modbusClient = ModbusClient(host=ipAddress, port=502,
-                           unit_id=1, auto_open=True)
-    modbusClient.open()
+    modbusClient = ModbusClient(
+        host=ipAddress, port=502, unit_id=1, auto_open=True)
+    try:
+        modbusClient.open()
+    except Exception as modbusClientError:
+        print("Unexpected error %s from open_modbusTCP_client_connection method" %
+              modbusClientError)
     return modbusClient
 
+
 def close_modbusTCP_client_connection(modbusClient):
-    modbusClient.close()
-
-
-async def main():
-    module_client = IoTHubModuleClient.create_from_edge_environment()
-    await module_client.connect()
-    print("\nPython %s\n" % sys.version)
-    print("IoT Hub Client for Python")
     try:
-        await check_level(module_client)
-        print("The sample is now checking level and will indefinitely.  Press Ctrl-C to exit. ")
-    except Exception as iothub_error:
-        print("Unexpected error %s from IoTHub" % iothub_error)
-        await module_client.shutdown()
-        return
+        modbusClient.close()
+    except Exception as modbusClientError:
+        print("Unexpected error %s from close_modbusTCP_client_connection method" %
+              modbusClientError)
+
+
+async def run_function(moduleClient):
+    await asyncio.gather(
+        knob2_handler(moduleClient),
+        temperature_handler(moduleClient)
+    )
+
+
+def main():
+    print("Python %s" % sys.version)
+    print("\n==============================\n")
+    print("IoT Hub Client for Python - SampleModule")
+    print("\n==============================")
+
+    moduleClient = create_module_clinet()
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(run_function(moduleClient))
+    except Exception as e:
+        print("Unexpected error %s " % e)
+        raise
+    finally:
+        print("Shutting down IoT Hub Client...")
+        loop.run_until_complete(moduleClient.shutdown())
+        loop.close()
+
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
