@@ -19,13 +19,14 @@ def create_module_clinet():
 
     # Define behavior for receiving an input message on input1 and input2
     # NOTE: this could be a coroutine or a function
-    def message_handler(message):
+    async def message_handler(message):
         if message.input_name == "control":
             print("Message received on \"Control\"")
             print("the data in the message received was ")
             print(message.data)
             print("custom properties are")
             print(message.custom_properties)
+            await temperature_alarm()
         else:
             print("message received on unknown input")
 
@@ -49,6 +50,7 @@ def create_module_clinet():
             await moduleClient.send_method_response(method_response)
 
     # set the received data handlers on the client
+    # message_handler is asynchronous method, but can run without "awaited", because moduleClient is asynchronous (??)
     moduleClient.on_message_received = message_handler
     moduleClient.on_twin_desired_properties_patch_received = twin_patch_handler
     moduleClient.on_method_request_received = method_handler
@@ -139,7 +141,7 @@ async def knob2_handler(moduleClient):
                       send_message_to_output_error)
         elif knob2 < THRESHOLD and alert == True:
             alert = False
-            iologik.write_single_coil(0, 0)
+            iologik.write_single_coil(0,0)
 
         # interupt coroutine
         await asyncio.sleep(0)
@@ -162,6 +164,14 @@ def point_slope(INPUT, sourceMin, sourceMax, targetMin, targetMax):
               (sourceMax-sourceMin)) + targetMin
     return OUTPUT
 
+async def temperature_alarm():
+    modbusClient = open_modbusTCP_client_connection(MODBUS_TCP_CLIENT_ADDRESS)
+    modbusClient.write_single_coil(1, 1)
+    await asyncio.sleep(0.3)
+    modbusClient.write_single_coil(1, 0)
+    close_modbusTCP_client_connection(modbusClient)
+    return 0
+ 
 
 def open_modbusTCP_client_connection(ipAddress):
     modbusClient = ModbusClient(
