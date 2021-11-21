@@ -77,10 +77,6 @@
             "route": "FROM /messages/modules/moxa_demokit_streamAnalytics_DanielM/* INTO BrokeredEndpoint(\"/modules/SampleModule/inputs/control\")",
             "priority": 0
           },
-          "temperatureToCloud": {
-            "route": "FROM /messages/modules/SampleModule/outputs/temperature INTO $upstream)",
-            "priority": 1
-          },
           "temperatureToAsa": {
             "route": "FROM /messages/modules/SampleModule/outputs/temperature INTO BrokeredEndpoint(\"/modules/moxa_demokit_streamAnalytics_DanielM/inputs/temperature\")",
             "priority": 1
