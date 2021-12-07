@@ -167,7 +167,7 @@ def point_slope(INPUT, sourceMin, sourceMax, targetMin, targetMax):
 async def temperature_alarm():
     modbusClient = open_modbusTCP_client_connection(MODBUS_TCP_CLIENT_ADDRESS)
     modbusClient.write_single_coil(1, 1)
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(3)
     modbusClient.write_single_coil(1, 0)
     close_modbusTCP_client_connection(modbusClient)
     return 0

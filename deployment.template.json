@@ -90,6 +90,17 @@
           "timeToLiveSecs": 7200
         }
       }
+    },
+    "SampleModule": {
+      "properties.desired": {}
+    },
+    "moxa_demokit_streamAnalytics_DanielM": {
+      "properties.desired": {
+        "ASAJobInfo": "https://moxademokitdanielm.blob.core.windows.net/asa-edge-5512ad4b-69ef-44a0-82d1-c4af8a7fe169/ASAEdgeJobs/5512ad4b-69ef-44a0-82d1-c4af8a7fe169/3d580ab4-9f62-4949-a8ed-eb2b5c7666de/ASAEdgeJobDefinition.zip?sv=2018-03-28&sr=b&sig=bMjE34LXoroG69frZvmrvOInZwq9nKN%2Fe%2B1tFps9FgQ%3D&st=2021-12-07T15%3A26%3A56Z&se=2024-12-07T15%3A36%3A56Z&sp=r",
+        "ASAJobResourceId": "/subscriptions/95ed7aca-37c4-45ce-98bf-d849e5cd59f5/resourceGroups/IOTdemo/providers/Microsoft.StreamAnalytics/streamingjobs/moxa_demokit_streamAnalytics_DanielM",
+        "ASAJobEtag": "4f200749-de94-49e6-8846-fb7f1118d160",
+        "PublishTimestamp": "12/7/2021 3:36:56 PM"
+      }
     }
   }
 }
